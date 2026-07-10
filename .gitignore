@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# Logs
+*.log
+
+# Local tooling
+.agents/
+.codex/
+
+# Local reference materials
+refer/
+
+# Environment files
+.env
+.env.*

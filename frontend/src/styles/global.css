@@ -1,0 +1,89 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f4f7fb;
+  color: #172033;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background: #f4f7fb;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  height: 56px;
+  padding: 0 24px;
+  background: #172033;
+  color: #ffffff;
+}
+
+.brand-icon {
+  font-size: 20px;
+}
+
+.brand-name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.app-content {
+  width: min(1080px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 40px 0;
+}
+
+.intro-section {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.intro-section h1 {
+  margin-bottom: 8px;
+  font-size: 32px;
+}
+
+.intro-section .ant-typography {
+  max-width: 680px;
+  color: #526077;
+}
+
+.summary-card {
+  border: 1px solid #e5eaf3;
+  border-radius: 8px;
+  box-shadow: 0 16px 42px rgba(23, 32, 51, 0.08);
+}
+
+.summary-icon {
+  color: #1677ff;
+  font-size: 32px;
+}
+
+.check-icon {
+  color: #12a150;
+}
+
+.full-width {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .app-content {
+    padding: 24px 0;
+  }
+
+  .intro-section {
+    flex-direction: column;
+  }
+
+  .intro-section h1 {
+    font-size: 26px;
+  }
+}
