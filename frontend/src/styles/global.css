@@ -50,11 +50,13 @@ body {
   margin-bottom: 8px;
 }
 
-.status-alert {
-  margin-bottom: 16px;
+.account-meta {
+  display: block;
+  max-width: 980px;
+  line-height: 1.8;
 }
 
-.stat-row {
+.status-alert {
   margin-bottom: 16px;
 }
 
@@ -74,6 +76,28 @@ body {
   height: 1px;
   margin: 16px 0;
   background: #edf0f5;
+}
+
+.instrument-cell {
+  display: grid;
+  gap: 2px;
+  line-height: 1.35;
+}
+
+.instrument-name {
+  color: #1f2633;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.profit-positive {
+  color: #cf1322;
+  font-weight: 600;
+}
+
+.profit-negative {
+  color: #389e0d;
+  font-weight: 600;
 }
 
 .ant-card {

@@ -22,7 +22,7 @@ const preferredColumns = [
   "m_eStatus",
 ];
 
-function createColumns(rows) {
+function createColumns(rows, columnTitles = {}) {
   const keys = Array.from(
     new Set(rows.flatMap((row) => Object.keys(row ?? {}))),
   );
@@ -32,7 +32,7 @@ function createColumns(rows) {
   ];
 
   return ordered.map((key) => ({
-    title: key.replace(/^m_/, ""),
+    title: columnTitles[key] ?? key.replace(/^m_/, ""),
     dataIndex: key,
     key,
     ellipsis: true,
@@ -41,7 +41,7 @@ function createColumns(rows) {
   }));
 }
 
-export default function DataGrid({ rows, loading }) {
+export default function DataGrid({ rows, loading, columnTitles = {}, columns }) {
   const data = Array.isArray(rows) ? rows : rows ? [rows] : [];
 
   if (!loading && data.length === 0) {
@@ -53,7 +53,7 @@ export default function DataGrid({ rows, loading }) {
       size="small"
       rowKey={(_, index) => index}
       loading={loading}
-      columns={createColumns(data)}
+      columns={columns ?? createColumns(data, columnTitles)}
       dataSource={data}
       scroll={{ x: true }}
       pagination={{ pageSize: 8, showSizeChanger: false }}

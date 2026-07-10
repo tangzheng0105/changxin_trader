@@ -6,14 +6,12 @@ import {
   PoweroffOutlined,
   ReloadOutlined,
   SendOutlined,
-  WalletOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
   Button,
   Card,
   Col,
-  Descriptions,
   Form,
   Input,
   InputNumber,
@@ -72,6 +70,91 @@ function money(value) {
   });
 }
 
+function numberText(value, digits = 2) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) {
+    return "-";
+  }
+  return numberValue.toLocaleString("zh-CN", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function positionCostPrice(row) {
+  const totalCost = Number(row.m_dPositionCost ?? row.m_dOpenCost);
+  const volume = Number(row.m_nVolume);
+  if (Number.isFinite(totalCost) && Number.isFinite(volume) && volume > 0) {
+    return totalCost / volume;
+  }
+  return row.m_dCostPrice ?? row.m_dOpenPrice;
+}
+
+function profitClassName(value) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue === 0) {
+    return "";
+  }
+  return numberValue > 0 ? "profit-positive" : "profit-negative";
+}
+
+const positionColumns = [
+  {
+    title: "证券",
+    key: "instrument",
+    width: 220,
+    fixed: "left",
+    render: (_, row) => (
+      <div className="instrument-cell">
+        <Text strong className="instrument-name">{row.m_strInstrumentName || "-"}</Text>
+        <Text type="secondary">
+          {row.m_strInstrumentID || "-"} / {row.m_strExchangeID || row.m_strMarket || "-"}
+        </Text>
+      </div>
+    ),
+  },
+  {
+    title: "持仓数量",
+    dataIndex: "m_nVolume",
+    key: "m_nVolume",
+    width: 120,
+    align: "right",
+    render: (value) => numberText(value, 0),
+  },
+  {
+    title: "成本价",
+    dataIndex: "m_dPositionCost",
+    key: "m_dPositionCost",
+    width: 140,
+    align: "right",
+    render: (_, row) => numberText(positionCostPrice(row)),
+  },
+  {
+    title: "最新价",
+    dataIndex: "m_dLastPrice",
+    key: "m_dLastPrice",
+    width: 120,
+    align: "right",
+    render: (value) => numberText(value),
+  },
+  {
+    title: "持仓盈亏",
+    dataIndex: "m_dPositionProfit",
+    key: "m_dPositionProfit",
+    width: 140,
+    align: "right",
+    render: (value) => <span className={profitClassName(value)}>{numberText(value)}</span>,
+  },
+  {
+    title: "市值",
+    dataIndex: "m_dMarketValue",
+    key: "m_dMarketValue",
+    width: 140,
+    align: "right",
+    render: (value, row) => numberText(value ?? row.m_dInstrumentValue),
+  },
+];
+
 export default function App() {
   const [status, setStatus] = useState(null);
   const [data, setData] = useState(emptyData);
@@ -90,7 +173,7 @@ export default function App() {
       stockValue: pick(account, ["m_dInstrumentValue", "m_dStockValue", "m_dMarketValue"], 0),
       positionProfit: pick(account, ["m_dPositionProfit", "m_dFloatProfit"], 0),
       daysProfit: pick(account, ["m_dDaysProfit", "m_dTodayProfit"], 0),
-      accountName: pick(account, ["m_strAccountName", "m_strName"], "长心股票test1"),
+      accountName: pick(account, ["m_strAccountName", "m_strName"], "长心股票test2"),
       brokerId: pick(account, ["m_strBrokerID", "m_strBrokerId"], "11194"),
       brokerName: pick(account, ["m_strBrokerName"], "迅投柜台股票仿真"),
     };
@@ -100,20 +183,6 @@ export default function App() {
     const traderStatus = await getTraderStatus();
     setStatus(traderStatus);
     return traderStatus;
-  }
-
-  async function connect() {
-    setConnecting(true);
-    try {
-      const result = await connectTrader();
-      setStatus(result.data);
-      message.success("交易接口已连接");
-      await loadTradingData();
-    } catch (error) {
-      message.error(error.message);
-    } finally {
-      setConnecting(false);
-    }
   }
 
   async function loadTradingData() {
@@ -129,6 +198,20 @@ export default function App() {
       deals: deals.data ?? [],
       positions: positions.data ?? [],
     });
+  }
+
+  async function connect() {
+    setConnecting(true);
+    try {
+      const result = await connectTrader();
+      setStatus(result.data);
+      message.success("交易接口已连接");
+      await loadTradingData();
+    } catch (error) {
+      message.error(error.message);
+    } finally {
+      setConnecting(false);
+    }
   }
 
   async function refreshData() {
@@ -222,8 +305,10 @@ export default function App() {
         <section className="page-title">
           <div>
             <Title level={2}>XtTraderPyApi 交易界面</Title>
-            <Text type="secondary">
-              账号 {status?.account_id || "-"}，服务器 {status?.address || "-"}
+            <Text type="secondary" className="account-meta">
+              账号 {status?.account_id || "-"}，服务器 {status?.address || "-"}，账号名称：
+              {accountOverview.accountName}，经纪公司编号：{accountOverview.brokerId}，经纪公司名称：
+              {accountOverview.brokerName}
             </Text>
           </div>
           <Button icon={<ReloadOutlined />} onClick={refreshData} loading={loading}>
@@ -241,29 +326,6 @@ export default function App() {
           />
         )}
 
-        <Row gutter={[16, 16]} className="stat-row">
-          <Col xs={24} sm={12} lg={6}>
-            <Card>
-              <Statistic title="接口加载" value={status?.api_loaded ? "已加载" : "未加载"} prefix={<ApiOutlined />} />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card>
-              <Statistic title="服务器连接" value={status?.connected ? "已连接" : "未连接"} prefix={<PoweroffOutlined />} />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card>
-              <Statistic title="用户登录" value={status?.logged_in ? "已登录" : "未登录"} prefix={<CheckCircleOutlined />} />
-            </Card>
-          </Col>
-          <Col xs={24} sm={12} lg={6}>
-            <Card>
-              <Statistic title="AccountKey" value={status?.account_key ? "已获取" : "未获取"} prefix={<WalletOutlined />} />
-            </Card>
-          </Col>
-        </Row>
-
         <Card className="account-overview" title="账户概览">
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} lg={8} xl={4}>
@@ -280,13 +342,6 @@ export default function App() {
             </Col>
             <Col xs={24} sm={12} lg={8} xl={4}>
               <Statistic title="当日盈亏" value={money(accountOverview.daysProfit)} />
-            </Col>
-            <Col xs={24} sm={12} lg={8} xl={4}>
-              <Descriptions size="small" column={1}>
-                <Descriptions.Item label="账号名称">{accountOverview.accountName}</Descriptions.Item>
-                <Descriptions.Item label="经纪公司编号">{accountOverview.brokerId}</Descriptions.Item>
-                <Descriptions.Item label="经纪公司名称">{accountOverview.brokerName}</Descriptions.Item>
-              </Descriptions>
             </Col>
           </Row>
         </Card>
@@ -316,7 +371,13 @@ export default function App() {
                   {
                     key: "positions",
                     label: "持仓",
-                    children: <DataGrid rows={data.positions} loading={loading && activeTab === "positions"} />,
+                    children: (
+                      <DataGrid
+                        rows={data.positions}
+                        loading={loading && activeTab === "positions"}
+                        columns={positionColumns}
+                      />
+                    ),
                   },
                 ]}
               />
