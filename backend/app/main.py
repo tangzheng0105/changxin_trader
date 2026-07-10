@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .routes import router as trader_router
+
 app = FastAPI(
     title="Changxin Trader API",
-    description="FastAPI backend for the Changxin Trader web application.",
+    description="FastAPI backend for the Changxin Trader web trading application.",
     version="0.1.0",
 )
 
@@ -14,6 +16,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(trader_router)
 
 
 @app.get("/api/health")
@@ -28,8 +32,8 @@ def get_summary() -> dict[str, object]:
         "backend": "FastAPI",
         "frontend": "React + Ant Design",
         "features": [
-            "separated frontend and backend",
-            "CORS enabled for local development",
-            "ready-to-extend API structure",
+            "XtTraderPyApi sync query wrapper",
+            "account assets, orders, deals and positions",
+            "ordinary sync order and cancel endpoints",
         ],
     }

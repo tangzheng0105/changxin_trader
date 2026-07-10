@@ -10,6 +10,7 @@ dist/
 
 # Logs
 *.log
+backend/userdata/
 
 # Local tooling
 .agents/
@@ -21,3 +22,5 @@ refer/
 # Environment files
 .env
 .env.*
+!.env.example
+!**/.env.example

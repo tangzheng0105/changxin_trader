@@ -2,6 +2,15 @@
 
 FastAPI backend service.
 
+## XtTraderPyApi
+
+Runtime files are stored in:
+
+- `vendor/xttrader/`: `XtTraderPyApi*.pyd` and required DLLs
+- `config/`: `traderApi.ini`, `traderApi.log4cxx`, `server.crt`
+
+Local credentials are read from `.env`. Use `.env.example` as the template.
+
 ## Setup
 
 ```powershell
