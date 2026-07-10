@@ -13,6 +13,7 @@ import {
   Button,
   Card,
   Col,
+  Descriptions,
   Form,
   Input,
   InputNumber,
@@ -26,7 +27,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   cancelCommand,
   cancelOrder,
@@ -50,6 +51,27 @@ const emptyData = {
   positions: [],
 };
 
+function pick(data, keys, fallback = "-") {
+  for (const key of keys) {
+    const value = data?.[key];
+    if (value !== undefined && value !== null && value !== "") {
+      return value;
+    }
+  }
+  return fallback;
+}
+
+function money(value) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) {
+    return "-";
+  }
+  return numberValue.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export default function App() {
   const [status, setStatus] = useState(null);
   const [data, setData] = useState(emptyData);
@@ -59,6 +81,20 @@ export default function App() {
   const [orderForm] = Form.useForm();
   const [cancelCommandForm] = Form.useForm();
   const [cancelOrderForm] = Form.useForm();
+
+  const accountOverview = useMemo(() => {
+    const account = data.account ?? {};
+    return {
+      balance: pick(account, ["m_dBalance", "m_dAssetBalance", "m_dTotalAsset", "m_dTotalAssets"], 0),
+      available: pick(account, ["m_dAvailable", "m_dEnableBalance"], 0),
+      stockValue: pick(account, ["m_dInstrumentValue", "m_dStockValue", "m_dMarketValue"], 0),
+      positionProfit: pick(account, ["m_dPositionProfit", "m_dFloatProfit"], 0),
+      daysProfit: pick(account, ["m_dDaysProfit", "m_dTodayProfit"], 0),
+      accountName: pick(account, ["m_strAccountName", "m_strName"], "长心股票test1"),
+      brokerId: pick(account, ["m_strBrokerID", "m_strBrokerId"], "11194"),
+      brokerName: pick(account, ["m_strBrokerName"], "迅投柜台股票仿真"),
+    };
+  }, [data.account]);
 
   async function loadStatus() {
     const traderStatus = await getTraderStatus();
@@ -72,7 +108,7 @@ export default function App() {
       const result = await connectTrader();
       setStatus(result.data);
       message.success("交易接口已连接");
-      await refreshData();
+      await loadTradingData();
     } catch (error) {
       message.error(error.message);
     } finally {
@@ -80,23 +116,29 @@ export default function App() {
     }
   }
 
+  async function loadTradingData() {
+    const [account, orders, deals, positions] = await Promise.all([
+      getAccountDetail(),
+      getOrders(),
+      getDeals(),
+      getPositions(),
+    ]);
+    setData({
+      account: account.data,
+      orders: orders.data ?? [],
+      deals: deals.data ?? [],
+      positions: positions.data ?? [],
+    });
+  }
+
   async function refreshData() {
     setLoading(true);
 
     try {
-      await loadStatus();
-      const [account, orders, deals, positions] = await Promise.all([
-        getAccountDetail(),
-        getOrders(),
-        getDeals(),
-        getPositions(),
-      ]);
-      setData({
-        account: account.data,
-        orders: orders.data ?? [],
-        deals: deals.data ?? [],
-        positions: positions.data ?? [],
-      });
+      const traderStatus = await loadStatus();
+      if (traderStatus.connected && traderStatus.logged_in) {
+        await loadTradingData();
+      }
     } catch (error) {
       message.error(error.message);
     } finally {
@@ -139,6 +181,12 @@ export default function App() {
 
   useEffect(() => {
     loadStatus()
+      .then((traderStatus) => {
+        if (traderStatus.connected && traderStatus.logged_in) {
+          return loadTradingData();
+        }
+        return null;
+      })
       .catch((error) => message.error(error.message))
       .finally(() => setLoading(false));
   }, []);
@@ -153,7 +201,10 @@ export default function App() {
           <span className="brand-name">Changxin Trader</span>
         </Space>
         <Space>
-          <Tag icon={connected ? <CheckCircleOutlined /> : <CloseCircleOutlined />} color={connected ? "success" : "error"}>
+          <Tag
+            icon={connected ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
+            color={connected ? "success" : "error"}
+          >
             {connected ? "已连接" : "未连接"}
           </Tag>
           <Button
@@ -212,6 +263,33 @@ export default function App() {
             </Card>
           </Col>
         </Row>
+
+        <Card className="account-overview" title="账户概览">
+          <Row gutter={[16, 16]}>
+            <Col xs={24} sm={12} lg={8} xl={4}>
+              <Statistic title="总资产" value={money(accountOverview.balance)} />
+            </Col>
+            <Col xs={24} sm={12} lg={8} xl={4}>
+              <Statistic title="可用资金" value={money(accountOverview.available)} />
+            </Col>
+            <Col xs={24} sm={12} lg={8} xl={4}>
+              <Statistic title="股票总市值" value={money(accountOverview.stockValue)} />
+            </Col>
+            <Col xs={24} sm={12} lg={8} xl={4}>
+              <Statistic title="持仓盈亏" value={money(accountOverview.positionProfit)} />
+            </Col>
+            <Col xs={24} sm={12} lg={8} xl={4}>
+              <Statistic title="当日盈亏" value={money(accountOverview.daysProfit)} />
+            </Col>
+            <Col xs={24} sm={12} lg={8} xl={4}>
+              <Descriptions size="small" column={1}>
+                <Descriptions.Item label="账号名称">{accountOverview.accountName}</Descriptions.Item>
+                <Descriptions.Item label="经纪公司编号">{accountOverview.brokerId}</Descriptions.Item>
+                <Descriptions.Item label="经纪公司名称">{accountOverview.brokerName}</Descriptions.Item>
+              </Descriptions>
+            </Col>
+          </Row>
+        </Card>
 
         <Row gutter={[16, 16]}>
           <Col xs={24} xl={16}>
