@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .routes import router as trader_router
+from .auth import ensure_admin
+from .auth_routes import router as auth_router
+from .stock_pool_routes import router as stock_pool_router
 
 app = FastAPI(
     title="Changxin Trader API",
@@ -18,6 +21,9 @@ app.add_middleware(
 )
 
 app.include_router(trader_router)
+app.include_router(stock_pool_router)
+app.include_router(auth_router)
+ensure_admin()
 
 
 @app.get("/api/health")

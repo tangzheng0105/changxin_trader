@@ -29,7 +29,6 @@ class XtTraderSettings:
     address: str
     username: str
     password: str
-    account_id: str
     account_key: str | None
     app_id: str
     auth_code: str
@@ -45,7 +44,6 @@ def get_xt_settings() -> XtTraderSettings:
         address=os.getenv("XT_TRADER_ADDRESS", ""),
         username=os.getenv("XT_TRADER_USERNAME", ""),
         password=os.getenv("XT_TRADER_PASSWORD", ""),
-        account_id=os.getenv("XT_TRADER_ACCOUNT_ID", ""),
         account_key=os.getenv("XT_TRADER_ACCOUNT_KEY") or None,
         app_id=os.getenv("XT_TRADER_APP_ID", "xt_api_2.0"),
         auth_code=os.getenv("XT_TRADER_AUTH_CODE", "7f3c92e678f9ec77"),

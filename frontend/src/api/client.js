@@ -1,9 +1,20 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+const TOKEN_KEY = "changxin_trader_token";
+
+export function setAuthToken(token) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getAuthToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
+      ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
       ...options.headers,
     },
     ...options,
@@ -21,6 +32,22 @@ async function request(path, options = {}) {
   }
 
   return response.json();
+}
+
+export function loginUser(payload) {
+  return request("/api/auth/login", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function getCurrentUser() {
+  return request("/api/auth/me");
+}
+
+export function getTraderUsers() {
+  return request("/api/auth/traders");
+}
+
+export function createTraderUser(payload) {
+  return request("/api/auth/traders", { method: "POST", body: JSON.stringify(payload) });
 }
 
 export function getSummary() {
@@ -69,5 +96,38 @@ export function cancelOrder(payload) {
   return request("/api/trader/cancel-order", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function getStockPool() {
+  return request("/api/stock-pool");
+}
+
+export function searchStockPool(query) {
+  return request(`/api/stock-pool/search?query=${encodeURIComponent(query)}`);
+}
+
+export function addStockPool(codes) {
+  return request("/api/stock-pool", {
+    method: "POST",
+    body: JSON.stringify({ codes }),
+  });
+}
+
+export function updateStockPool(id, payload) {
+  return request(`/api/stock-pool/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteStockPool(id) {
+  return request(`/api/stock-pool/${id}`, { method: "DELETE" });
+}
+
+export function deleteStockPoolBatch(ids) {
+  return request("/api/stock-pool", {
+    method: "DELETE",
+    body: JSON.stringify({ ids }),
   });
 }

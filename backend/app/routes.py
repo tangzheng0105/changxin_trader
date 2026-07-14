@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from .auth import CurrentUser, assert_trader, get_current_user
 from .schemas import ApiResult, CancelCommandRequest, CancelOrderRequest, OrderRequest, TraderStatus
 from .xt_gateway import XtTraderGatewayError, gateway
 
@@ -16,55 +17,66 @@ def _run(action):
 
 
 @router.get("/status", response_model=TraderStatus)
-def get_status() -> TraderStatus:
-    return gateway.status()
+def get_status(user: CurrentUser = Depends(get_current_user)) -> TraderStatus:
+    assert_trader(user)
+    return gateway.status(user.account_id)
 
 
 @router.post("/connect", response_model=ApiResult)
-def connect() -> ApiResult:
-    return _run(gateway.connect)
+def connect(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return _run(lambda: gateway.connect(user.account_id))
 
 
 @router.get("/account", response_model=ApiResult)
-def account_detail() -> ApiResult:
-    return _run(gateway.account_detail)
+def account_detail(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return _run(lambda: gateway.account_detail(user.account_id))
 
 
 @router.get("/account-keys", response_model=ApiResult)
-def account_keys() -> ApiResult:
-    return _run(gateway.account_keys)
+def account_keys(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return _run(lambda: gateway.account_keys(user.account_id))
 
 
 @router.get("/orders", response_model=ApiResult)
-def orders() -> ApiResult:
-    return _run(gateway.orders)
+def orders(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return _run(lambda: gateway.orders(user.account_id))
 
 
 @router.get("/deals", response_model=ApiResult)
-def deals() -> ApiResult:
-    return _run(gateway.deals)
+def deals(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return _run(lambda: gateway.deals(user.account_id))
 
 
 @router.get("/positions", response_model=ApiResult)
-def positions() -> ApiResult:
-    return _run(gateway.positions)
+def positions(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return _run(lambda: gateway.positions(user.account_id))
 
 
 @router.get("/position-statics", response_model=ApiResult)
-def position_statics() -> ApiResult:
-    return _run(gateway.position_statics)
+def position_statics(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return _run(lambda: gateway.position_statics(user.account_id))
 
 
 @router.post("/orders", response_model=ApiResult)
-def order(request: OrderRequest) -> ApiResult:
-    return _run(lambda: gateway.order(request))
+def order(request: OrderRequest, user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return _run(lambda: gateway.order(user.account_id, request))
 
 
 @router.post("/cancel-command", response_model=ApiResult)
-def cancel_command(request: CancelCommandRequest) -> ApiResult:
-    return _run(lambda: gateway.cancel_command(request.order_id))
+def cancel_command(request: CancelCommandRequest, user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return _run(lambda: gateway.cancel_command(user.account_id, request.order_id))
 
 
 @router.post("/cancel-order", response_model=ApiResult)
-def cancel_order(request: CancelOrderRequest) -> ApiResult:
-    return _run(lambda: gateway.cancel_order(request.order_sys_id, request.market, request.instrument))
+def cancel_order(request: CancelOrderRequest, user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return _run(lambda: gateway.cancel_order(user.account_id, request.order_sys_id, request.market, request.instrument))

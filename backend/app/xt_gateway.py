@@ -67,56 +67,56 @@ class XtTraderGateway:
         self._login_event = threading.Event()
         self._login_error: str | None = None
         self._logged_in = False
-        self._account_key: str | None = self._settings.account_key
         self._account_keys: dict[str, str] = {}
         self._dll_dirs: list[Any] = []
         self._request_id = 1
 
-    def status(self) -> TraderStatus:
+    def status(self, account_id: str) -> TraderStatus:
         settings = self._settings
         return TraderStatus(
-            configured=all([settings.address, settings.username, settings.password, settings.account_id]),
+            configured=all([settings.address, settings.username, settings.password, account_id]),
             api_loaded=self._module is not None,
             connected=self._connected.is_set(),
             logged_in=self._logged_in,
-            account_id=settings.account_id,
-            account_key=self._account_key,
+            account_id=account_id,
+            account_key=self._account_keys.get(account_id),
             address=settings.address,
         )
 
-    def connect(self) -> dict[str, Any]:
+    def connect(self, account_id: str) -> dict[str, Any]:
         with self._lock:
             self._ensure_api()
             self._ensure_connected()
             self._ensure_logged_in()
-            return self.status().model_dump()
+            self._require_account_key(account_id)
+            return self.status(account_id).model_dump()
 
-    def account_detail(self) -> dict[str, Any]:
-        return _model_to_dict(self._call_account_method("reqAccountDetailSync"))
+    def account_detail(self, account_id: str) -> dict[str, Any]:
+        return _model_to_dict(self._call_account_method("reqAccountDetailSync", account_id))
 
-    def orders(self) -> list[dict[str, Any]]:
-        return _list_to_dicts(self._call_account_method("reqOrderDetailSync"))
+    def orders(self, account_id: str) -> list[dict[str, Any]]:
+        return _list_to_dicts(self._call_account_method("reqOrderDetailSync", account_id))
 
-    def deals(self) -> list[dict[str, Any]]:
-        return _list_to_dicts(self._call_account_method("reqDealDetailSync"))
+    def deals(self, account_id: str) -> list[dict[str, Any]]:
+        return _list_to_dicts(self._call_account_method("reqDealDetailSync", account_id))
 
-    def positions(self) -> list[dict[str, Any]]:
-        return _list_to_dicts(self._call_account_method("reqPositionDetailSync"))
+    def positions(self, account_id: str) -> list[dict[str, Any]]:
+        return _list_to_dicts(self._call_account_method("reqPositionDetailSync", account_id))
 
-    def position_statics(self) -> list[dict[str, Any]]:
-        return _list_to_dicts(self._call_account_method("reqPositionStaticsSync"))
+    def position_statics(self, account_id: str) -> list[dict[str, Any]]:
+        return _list_to_dicts(self._call_account_method("reqPositionStaticsSync", account_id))
 
-    def account_keys(self) -> list[dict[str, Any]]:
-        self._ensure_ready()
+    def account_keys(self, account_id: str) -> list[dict[str, Any]]:
+        self._ensure_ready(account_id)
         error = self._module.XtError(0, "")
         keys = self._api.reqAccountKeysSync(error)
         self._check_error(error, "查询 accountKey 失败")
         return _list_to_dicts(keys)
 
-    def order(self, request: OrderRequest) -> dict[str, Any]:
-        self._ensure_ready()
+    def order(self, account_id: str, request: OrderRequest) -> dict[str, Any]:
+        self._ensure_ready(account_id)
         order_info = self._module.COrdinaryOrder()
-        order_info.m_strAccountID = self._settings.account_id
+        order_info.m_strAccountID = account_id
         order_info.m_strMarket = request.market.upper()
         order_info.m_strInstrument = request.instrument
         order_info.m_dPrice = request.price
@@ -133,49 +133,50 @@ class XtTraderGateway:
         )
 
         error = self._module.XtError(0, "")
-        order_id = self._api.orderSync(order_info, error, self._require_account_key())
+        order_id = self._api.orderSync(order_info, error, self._require_account_key(account_id))
         self._check_error(error, "同步下单失败")
         return {"order_id": order_id}
 
-    def cancel_command(self, order_id: int) -> dict[str, Any]:
-        self._ensure_ready()
+    def cancel_command(self, account_id: str, order_id: int) -> dict[str, Any]:
+        self._ensure_ready(account_id)
         error = self._module.XtError(0, "")
-        self._api.cancelSync(order_id, error, self._require_account_key())
+        self._api.cancelSync(order_id, error, self._require_account_key(account_id))
         self._check_error(error, "同步撤指令失败")
         return {"order_id": order_id}
 
-    def cancel_order(self, order_sys_id: str, market: str = "", instrument: str = "") -> dict[str, Any]:
-        self._ensure_ready()
+    def cancel_order(self, account_id: str, order_sys_id: str, market: str = "", instrument: str = "") -> dict[str, Any]:
+        self._ensure_ready(account_id)
         error = self._module.XtError(0, "")
         self._api.cancelOrderSync(
-            self._settings.account_id,
+            account_id,
             order_sys_id,
             market,
             instrument,
             error,
-            self._require_account_key(),
+            self._require_account_key(account_id),
         )
         self._check_error(error, "同步撤委托失败")
         return {"order_sys_id": order_sys_id}
 
-    def _call_account_method(self, method_name: str) -> Any:
-        self._ensure_ready()
-        error = self._module.XtError(0, "")
-        method: Callable[..., Any] = getattr(self._api, method_name)
-        result = method(self._settings.account_id, error, self._require_account_key())
-        self._check_error(error, f"{method_name} failed")
-        return result
+    def _call_account_method(self, method_name: str, account_id: str) -> Any:
+        with self._lock:
+            self._ensure_ready(account_id)
+            error = self._module.XtError(0, "")
+            method: Callable[..., Any] = getattr(self._api, method_name)
+            result = method(account_id, error, self._require_account_key(account_id))
+            self._check_error(error, f"{method_name} failed")
+            return result
 
-    def _ensure_ready(self) -> None:
+    def _ensure_ready(self, account_id: str) -> None:
         with self._lock:
             self._ensure_api()
             self._ensure_connected()
             self._ensure_logged_in()
-            self._require_account_key()
+            self._require_account_key(account_id)
 
     def _ensure_api(self) -> None:
         self._settings = get_xt_settings()
-        if not self.status().configured:
+        if not all([self._settings.address, self._settings.username, self._settings.password]):
             raise XtTraderGatewayError("XT_TRADER_* 配置不完整，请检查 backend/.env。")
 
         if self._module is None:
@@ -234,8 +235,6 @@ class XtTraderGateway:
             ) -> None:
                 if account_id and account_key:
                     gateway._account_keys[account_id] = account_key
-                    if account_id == gateway._settings.account_id:
-                        gateway._account_key = account_key
 
         return Callback()
 
@@ -258,9 +257,6 @@ class XtTraderGateway:
             self._logged_in = True
         else:
             self._login_async_after_sync_error(_error_message(error))
-        self._account_key = self._settings.account_key or self._account_keys.get(self._settings.account_id)
-        if not self._account_key:
-            self._refresh_account_key()
 
     def _login_async_after_sync_error(self, sync_error: str) -> None:
         self._login_event.clear()
@@ -279,7 +275,7 @@ class XtTraderGateway:
         if not self._logged_in:
             raise XtTraderGatewayError(f"用户登录失败: {self._login_error or sync_error}")
 
-    def _refresh_account_key(self) -> None:
+    def _refresh_account_key(self, requested_account_id: str) -> None:
         error = self._module.XtError(0, "")
         keys = self._api.reqAccountKeysSync(error)
         self._check_error(error, "查询 accountKey 失败")
@@ -288,16 +284,18 @@ class XtTraderGateway:
             account_key = getattr(item, "m_strAccountKey", "")
             if account_id:
                 self._account_keys[account_id] = account_key
-            if account_id == self._settings.account_id or (not account_id and account_key):
-                self._account_key = account_key
+            if account_id == requested_account_id or (not account_id and account_key):
+                self._account_keys[requested_account_id] = account_key
                 break
 
-    def _require_account_key(self) -> str:
-        if not self._account_key:
-            self._refresh_account_key()
-        if not self._account_key:
+    def _require_account_key(self, account_id: str) -> str:
+        account_key = self._account_keys.get(account_id)
+        if not account_key:
+            self._refresh_account_key(account_id)
+            account_key = self._account_keys.get(account_id)
+        if not account_key:
             raise XtTraderGatewayError("未获取到当前资金账号的 accountKey，请确认账号登录状态。")
-        return self._account_key
+        return account_key
 
     def _check_error(self, error: Any, prefix: str) -> None:
         if _error_success(error):

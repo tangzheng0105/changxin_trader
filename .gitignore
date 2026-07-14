@@ -11,6 +11,7 @@ dist/
 # Logs
 *.log
 backend/userdata/
+backend/data/
 
 # Local tooling
 .agents/

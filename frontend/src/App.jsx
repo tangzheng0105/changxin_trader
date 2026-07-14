@@ -2,10 +2,14 @@ import {
   ApiOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
+  DatabaseOutlined,
   DeleteOutlined,
   PoweroffOutlined,
+  ProfileOutlined,
   ReloadOutlined,
   SendOutlined,
+  TeamOutlined,
+  LogoutOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
@@ -35,9 +39,15 @@ import {
   getOrders,
   getPositions,
   getTraderStatus,
+  getAuthToken,
+  getCurrentUser,
   placeOrder,
+  setAuthToken,
 } from "./api/client";
 import DataGrid from "./components/DataGrid";
+import LoginPage from "./components/LoginPage";
+import StockPoolPage from "./components/StockPoolPage";
+import UserManagementPage from "./components/UserManagementPage";
 
 const { Content, Header } = Layout;
 const { Text, Title } = Typography;
@@ -161,6 +171,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [activeTab, setActiveTab] = useState("account");
+  const [currentPage, setCurrentPage] = useState("trading");
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [orderForm] = Form.useForm();
   const [cancelCommandForm] = Form.useForm();
   const [cancelOrderForm] = Form.useForm();
@@ -263,6 +276,22 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!getAuthToken()) {
+      setAuthLoading(false);
+      return;
+    }
+    getCurrentUser()
+      .then(setUser)
+      .catch(() => setAuthToken(null))
+      .finally(() => setAuthLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!user || user.role !== "trader") {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     loadStatus()
       .then((traderStatus) => {
         if (traderStatus.connected && traderStatus.logged_in) {
@@ -272,7 +301,26 @@ export default function App() {
       })
       .catch((error) => message.error(error.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [user]);
+
+  useEffect(() => {
+    if (user) setCurrentPage(user.role === "admin" ? "users" : "trading");
+  }, [user]);
+
+  function logout() {
+    setAuthToken(null);
+    setUser(null);
+    setStatus(null);
+    setData(emptyData);
+  }
+
+  if (authLoading) {
+    return <main className="login-page" />;
+  }
+
+  if (!user) {
+    return <LoginPage onLogin={setUser} />;
+  }
 
   const connected = Boolean(status?.connected && status?.logged_in);
 
@@ -283,28 +331,36 @@ export default function App() {
           <ApiOutlined className="brand-icon" />
           <span className="brand-name">Changxin Trader</span>
         </Space>
+        <nav className="header-nav" aria-label="主导航">
+          {user.role === "trader" && (
+            <>
+              <Button type="text" className={`header-nav-item ${currentPage === "trading" ? "active" : ""}`} onClick={() => setCurrentPage("trading")}>交易界面</Button>
+              <Button type="text" icon={<DatabaseOutlined />} className={`header-nav-item ${currentPage === "pool" ? "active" : ""}`} onClick={() => setCurrentPage("pool")}>股票池管理</Button>
+              <Button type="text" icon={<ProfileOutlined />} className={`header-nav-item ${currentPage === "details" ? "active" : ""}`} onClick={() => setCurrentPage("details")}>账户明细</Button>
+            </>
+          )}
+          {user.role === "admin" && (
+            <Button type="text" icon={<TeamOutlined />} className={`header-nav-item ${currentPage === "users" ? "active" : ""}`} onClick={() => setCurrentPage("users")}>用户管理</Button>
+          )}
+        </nav>
         <Space>
-          <Tag
-            icon={connected ? <CheckCircleOutlined /> : <CloseCircleOutlined />}
-            color={connected ? "success" : "error"}
-          >
-            {connected ? "已连接" : "未连接"}
-          </Tag>
-          <Button
-            icon={<PoweroffOutlined />}
-            loading={connecting}
-            type="primary"
-            onClick={connect}
-          >
-            连接交易接口
-          </Button>
+          <Tag color={user.role === "admin" ? "gold" : "blue"}>{user.role === "admin" ? "管理员" : user.account_id}</Tag>
+          {user.role === "trader" && <Tag icon={connected ? <CheckCircleOutlined /> : <CloseCircleOutlined />} color={connected ? "success" : "error"}>{connected ? "已连接" : "未连接"}</Tag>}
+          {user.role === "trader" && <Button icon={<PoweroffOutlined />} loading={connecting} type="primary" onClick={connect}>连接交易接口</Button>}
+          <Button icon={<LogoutOutlined />} onClick={logout}>退出</Button>
         </Space>
       </Header>
 
       <Content className="app-content">
+        {currentPage === "users" ? (
+          <UserManagementPage />
+        ) : currentPage === "pool" ? (
+          <StockPoolPage accountBalance={accountOverview.balance} positions={data.positions} />
+        ) : (
+          <>
         <section className="page-title">
           <div>
-            <Title level={2}>XtTraderPyApi 交易界面</Title>
+            <Title level={2}>{currentPage === "details" ? "账户明细" : "XtTraderPyApi 交易界面"}</Title>
             <Text type="secondary" className="account-meta">
               账号 {status?.account_id || "-"}，服务器 {status?.address || "-"}，账号名称：
               {accountOverview.accountName}，经纪公司编号：{accountOverview.brokerId}，经纪公司名称：
@@ -347,7 +403,8 @@ export default function App() {
         </Card>
 
         <Row gutter={[16, 16]}>
-          <Col xs={24} xl={16}>
+          {currentPage === "details" && (
+          <Col xs={24} xl={24}>
             <Card className="workspace-card">
               <Tabs
                 activeKey={activeTab}
@@ -383,7 +440,9 @@ export default function App() {
               />
             </Card>
           </Col>
+          )}
 
+          {currentPage === "trading" && (
           <Col xs={24} xl={8}>
             <Space direction="vertical" size={16} className="full-width">
               <Card title="同步普通委托" className="workspace-card">
@@ -493,7 +552,10 @@ export default function App() {
               </Card>
             </Space>
           </Col>
+          )}
         </Row>
+          </>
+        )}
       </Content>
     </Layout>
   );
