@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -24,6 +25,14 @@ class TraderCreateRequest(BaseModel):
 class UserInfo(BaseModel):
     account_id: str
     role: Literal["admin", "trader"]
+
+
+class PositionSettingUpdate(BaseModel):
+    target_percentage: float = Field(..., ge=0, le=100)
+
+
+class RebalanceScheduleRequest(BaseModel):
+    scheduled_at: datetime
 
 
 class TraderStatus(BaseModel):

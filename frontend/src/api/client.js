@@ -42,6 +42,17 @@ export function getCurrentUser() {
   return request("/api/auth/me");
 }
 
+export function getPositionSetting() {
+  return request("/api/auth/position-setting");
+}
+
+export function updatePositionSetting(payload) {
+  return request("/api/auth/position-setting", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getTraderUsers() {
   return request("/api/auth/traders");
 }
@@ -74,8 +85,31 @@ export function getDeals() {
   return request("/api/trader/deals");
 }
 
+export function getTradeExceptions() {
+  return request("/api/trader/exceptions");
+}
+
+export function getTradeLogs() {
+  return request("/api/trader/logs");
+}
+
 export function getPositions() {
   return request("/api/trader/positions");
+}
+
+export function previewRebalance() {
+  return request("/api/rebalance/preview", { method: "POST" });
+}
+
+export function executeRebalance(planId) {
+  return request(`/api/rebalance/${planId}/execute`, { method: "POST" });
+}
+
+export function scheduleRebalance(planId, scheduledAt) {
+  return request(`/api/rebalance/${planId}/schedule`, {
+    method: "POST",
+    body: JSON.stringify({ scheduled_at: scheduledAt }),
+  });
 }
 
 export function placeOrder(payload) {

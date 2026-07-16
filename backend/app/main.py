@@ -5,6 +5,8 @@ from .routes import router as trader_router
 from .auth import ensure_admin
 from .auth_routes import router as auth_router
 from .stock_pool_routes import router as stock_pool_router
+from .rebalance_routes import router as rebalance_router
+from .rebalancer import start_scheduler
 
 app = FastAPI(
     title="Changxin Trader API",
@@ -23,7 +25,9 @@ app.add_middleware(
 app.include_router(trader_router)
 app.include_router(stock_pool_router)
 app.include_router(auth_router)
+app.include_router(rebalance_router)
 ensure_admin()
+start_scheduler()
 
 
 @app.get("/api/health")

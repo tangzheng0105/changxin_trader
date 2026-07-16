@@ -3,11 +3,14 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
 
 from .config import XtTraderSettings, get_xt_settings
 from .schemas import OrderRequest, TraderStatus
+from .trade_exceptions import list_trade_exceptions, record_trade_exception
+from .trade_logs import record_trade_log
 
 
 class XtTraderGatewayError(RuntimeError):
@@ -89,6 +92,9 @@ class XtTraderGateway:
             self._ensure_connected()
             self._ensure_logged_in()
             self._require_account_key(account_id)
+            # A socket/login callback can be stale. Verify that this account can
+            # actually execute a synchronous request before reporting success.
+            self._call_account_method("reqAccountDetailSync", account_id)
             return self.status(account_id).model_dump()
 
     def account_detail(self, account_id: str) -> dict[str, Any]:
@@ -106,6 +112,15 @@ class XtTraderGateway:
     def position_statics(self, account_id: str) -> list[dict[str, Any]]:
         return _list_to_dicts(self._call_account_method("reqPositionStaticsSync", account_id))
 
+    def exceptions(self, account_id: str) -> list[dict[str, Any]]:
+        stored = list_trade_exceptions(account_id)
+        historical = []
+        for order in self.orders(account_id):
+            error_id = int(order.get("m_nErrorID") or order.get("m_nErrorCode") or 0)
+            if error_id or order.get("m_strErrorMsg"):
+                historical.append({**order, "m_strExceptionType": "委托明细"})
+        return [*stored, *historical]
+
     def account_keys(self, account_id: str) -> list[dict[str, Any]]:
         self._ensure_ready(account_id)
         error = self._module.XtError(0, "")
@@ -114,58 +129,143 @@ class XtTraderGateway:
         return _list_to_dicts(keys)
 
     def order(self, account_id: str, request: OrderRequest) -> dict[str, Any]:
-        self._ensure_ready(account_id)
-        order_info = self._module.COrdinaryOrder()
-        order_info.m_strAccountID = account_id
-        order_info.m_strMarket = request.market.upper()
-        order_info.m_strInstrument = request.instrument
-        order_info.m_dPrice = request.price
-        order_info.m_nVolume = request.volume
-        order_info.m_dSuperPriceRate = 0
-        order_info.m_strRemark = request.remark
-        order_info.m_eOperationType = self._enum_value(
-            "EOperationType",
-            {"BUY": "OPT_BUY", "SELL": "OPT_SELL"}[request.operation],
-        )
-        order_info.m_ePriceType = self._enum_value(
-            "EPriceType",
-            {"FIX": "PRTP_FIX", "MARKET": "PRTP_MARKET", "LATEST": "PRTP_LATEST"}[request.price_type],
-        )
+        request_payload = request.model_dump()
+        try:
+            self._ensure_ready(account_id)
+            order_info = self._module.COrdinaryOrder()
+            order_info.m_strAccountID = account_id
+            order_info.m_strMarket = request.market.upper()
+            order_info.m_strInstrument = request.instrument
+            order_info.m_dPrice = request.price
+            order_info.m_nVolume = request.volume
+            order_info.m_dSuperPriceRate = 0
+            order_info.m_strRemark = request.remark
+            order_info.m_eOperationType = self._enum_value(
+                "EOperationType",
+                {"BUY": "OPT_BUY", "SELL": "OPT_SELL"}[request.operation],
+            )
+            order_info.m_ePriceType = self._enum_value(
+                "EPriceType",
+                {"FIX": "PRTP_FIX", "MARKET": "PRTP_MARKET", "LATEST": "PRTP_LATEST"}[request.price_type],
+            )
 
-        error = self._module.XtError(0, "")
-        order_id = self._api.orderSync(order_info, error, self._require_account_key(account_id))
-        self._check_error(error, "同步下单失败")
-        return {"order_id": order_id}
+            error = self._module.XtError(0, "")
+            order_id = self._api.orderSync(order_info, error, self._require_account_key(account_id))
+            self._check_error(error, "同步下单失败")
+            response = {"order_id": order_id}
+            record_trade_log(account_id, "ordinary_order", request_payload, response)
+            return response
+        except Exception as exc:
+            record_trade_log(account_id, "ordinary_order", request_payload, error_message=str(exc))
+            raise
+
+    def intelligent_algorithm_order(
+        self,
+        *,
+        account_id: str,
+        market: str,
+        instrument: str,
+        operation: str,
+        price: float,
+        volume: int,
+    ) -> dict[str, Any]:
+        request_payload = {
+            "market": market.upper(), "instrument": instrument, "operation": operation,
+            "price": price, "volume": volume, "algorithm": "VWAP",
+        }
+        try:
+            self._ensure_ready(account_id)
+            order_info = self._module.CIntelligentAlgorithmOrder()
+            order_info.m_strAccountID = account_id
+            order_info.m_strMarket = market.upper()
+            order_info.m_strInstrument = instrument
+            order_info.m_eOperationType = self._enum_value(
+            "EOperationType", {"BUY": "OPT_BUY", "SELL": "OPT_SELL"}[operation]
+            )
+            order_info.m_ePriceType = self._enum_value("EPriceType", "PRTP_MARKET")
+            order_info.m_dPrice = price
+            order_info.m_nVolume = volume
+            order_info.m_strOrderType = "VWAP"
+            order_info.m_nValidTimeStart = int(time.time())
+            order_info.m_nValidTimeEnd = order_info.m_nValidTimeStart + 1800
+            order_info.m_dMaxPartRate = 1
+            order_info.m_dMinAmountPerOrder = 100
+            order_info.m_strRemark = "rebalance-vwap"
+
+            error = self._module.XtError(0, "")
+            order_id = self._api.orderSync(order_info, error, self._require_account_key(account_id))
+            self._check_error(error, "智能算法调仓下单失败")
+            response = {"order_id": order_id}
+            record_trade_log(account_id, "intelligent_algorithm_order", request_payload, response)
+            return response
+        except Exception as exc:
+            record_trade_log(account_id, "intelligent_algorithm_order", request_payload, error_message=str(exc))
+            raise
 
     def cancel_command(self, account_id: str, order_id: int) -> dict[str, Any]:
-        self._ensure_ready(account_id)
-        error = self._module.XtError(0, "")
-        self._api.cancelSync(order_id, error, self._require_account_key(account_id))
-        self._check_error(error, "同步撤指令失败")
-        return {"order_id": order_id}
+        request_payload = {"order_id": order_id}
+        try:
+            self._ensure_ready(account_id)
+            error = self._module.XtError(0, "")
+            self._api.cancelSync(order_id, error, self._require_account_key(account_id))
+            self._check_error(error, "同步撤指令失败")
+            record_trade_log(account_id, "cancel_command", request_payload, request_payload)
+            return request_payload
+        except Exception as exc:
+            record_trade_log(account_id, "cancel_command", request_payload, error_message=str(exc))
+            raise
 
     def cancel_order(self, account_id: str, order_sys_id: str, market: str = "", instrument: str = "") -> dict[str, Any]:
-        self._ensure_ready(account_id)
-        error = self._module.XtError(0, "")
-        self._api.cancelOrderSync(
-            account_id,
-            order_sys_id,
-            market,
-            instrument,
-            error,
-            self._require_account_key(account_id),
-        )
-        self._check_error(error, "同步撤委托失败")
-        return {"order_sys_id": order_sys_id}
+        request_payload = {"order_sys_id": order_sys_id, "market": market, "instrument": instrument}
+        try:
+            self._ensure_ready(account_id)
+            error = self._module.XtError(0, "")
+            self._api.cancelOrderSync(
+                account_id,
+                order_sys_id,
+                market,
+                instrument,
+                error,
+                self._require_account_key(account_id),
+            )
+            self._check_error(error, "同步撤委托失败")
+            response = {"order_sys_id": order_sys_id}
+            record_trade_log(account_id, "cancel_order", request_payload, response)
+            return response
+        except Exception as exc:
+            record_trade_log(account_id, "cancel_order", request_payload, error_message=str(exc))
+            raise
 
     def _call_account_method(self, method_name: str, account_id: str) -> Any:
         with self._lock:
-            self._ensure_ready(account_id)
-            error = self._module.XtError(0, "")
-            method: Callable[..., Any] = getattr(self._api, method_name)
-            result = method(account_id, error, self._require_account_key(account_id))
-            self._check_error(error, f"{method_name} failed")
-            return result
+            try:
+                return self._execute_account_method(method_name, account_id)
+            except XtTraderGatewayError as exc:
+                if not self._is_transport_error(str(exc)):
+                    raise
+                self._invalidate_connection()
+                return self._execute_account_method(method_name, account_id)
+
+    def _execute_account_method(self, method_name: str, account_id: str) -> Any:
+        self._ensure_ready(account_id)
+        error = self._module.XtError(0, "")
+        method: Callable[..., Any] = getattr(self._api, method_name)
+        result = method(account_id, error, self._require_account_key(account_id))
+        self._check_error(error, f"{method_name} failed")
+        return result
+
+    @staticmethod
+    def _is_transport_error(message: str) -> bool:
+        normalized = message.lower()
+        return "no proxy client" in normalized or "end of file" in normalized
+
+    def _invalidate_connection(self) -> None:
+        self._api = None
+        self._callback = None
+        self._connected.clear()
+        self._login_event.clear()
+        self._logged_in = False
+        self._account_keys.clear()
 
     def _ensure_ready(self, account_id: str) -> None:
         with self._lock:
@@ -235,6 +335,14 @@ class XtTraderGateway:
             ) -> None:
                 if account_id and account_key:
                     gateway._account_keys[account_id] = account_key
+
+            def onRtnOrderError(self, error: Any) -> None:
+                payload = _model_to_dict(error)
+                record_trade_exception(str(payload.get("m_strAccountID") or ""), "委托异常", payload)
+
+            def onRtnCancelError(self, error: Any) -> None:
+                payload = _model_to_dict(error)
+                record_trade_exception(str(payload.get("m_strAccountID") or ""), "撤单异常", payload)
 
         return Callback()
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from .auth import CurrentUser, assert_trader, get_current_user
 from .schemas import ApiResult, CancelCommandRequest, CancelOrderRequest, OrderRequest, TraderStatus
+from .trade_logs import list_trade_logs
 from .xt_gateway import XtTraderGatewayError, gateway
 
 router = APIRouter(prefix="/api/trader", tags=["trader"])
@@ -50,6 +51,18 @@ def orders(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
 def deals(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
     assert_trader(user)
     return _run(lambda: gateway.deals(user.account_id))
+
+
+@router.get("/exceptions", response_model=ApiResult)
+def exceptions(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return _run(lambda: gateway.exceptions(user.account_id))
+
+
+@router.get("/logs", response_model=ApiResult)
+def trade_logs(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return ApiResult(success=True, data=list_trade_logs(user.account_id))
 
 
 @router.get("/positions", response_model=ApiResult)

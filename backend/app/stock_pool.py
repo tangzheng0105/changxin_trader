@@ -12,6 +12,7 @@ from urllib.request import urlopen
 DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "stock_pool.db"
 CODE_PATTERN = re.compile(r"^\d{6}$")
 TENCENT_SUGGEST_URL = "https://smartbox.gtimg.cn/s3/"
+TENCENT_QUOTE_URL = "https://qt.gtimg.cn/q="
 
 
 def _connection() -> sqlite3.Connection:
@@ -49,6 +50,33 @@ def list_stock_pool() -> list[dict[str, Any]]:
     with _connection() as connection:
         rows = connection.execute("SELECT * FROM stock_pool ORDER BY updated_at DESC, id DESC").fetchall()
     return [_row_to_dict(row) for row in rows]
+
+
+def quote_prices(codes: list[str]) -> dict[str, float]:
+    unique_codes = list(dict.fromkeys(code for code in codes if CODE_PATTERN.fullmatch(code)))
+    if not unique_codes:
+        return {}
+
+    symbols = [f"{'sh' if code.startswith(('6', '9')) else 'sz'}{code}" for code in unique_codes]
+    try:
+        with urlopen(f"{TENCENT_QUOTE_URL}{','.join(symbols)}", timeout=5) as response:  # nosec B310
+            payload = response.read().decode("gbk", errors="ignore")
+    except Exception:
+        return {}
+
+    prices: dict[str, float] = {}
+    for line in payload.split(";"):
+        match = re.search(r'v_\w+(\d{6})="([^"]*)"', line)
+        if not match:
+            continue
+        fields = match.group(2).split("~")
+        try:
+            price = float(fields[3])
+        except (IndexError, ValueError):
+            continue
+        if price > 0:
+            prices[match.group(1)] = price
+    return prices
 
 
 def _remote_search(query: str) -> list[dict[str, str]]:

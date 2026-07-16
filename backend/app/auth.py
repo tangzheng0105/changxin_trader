@@ -42,6 +42,12 @@ def _connection() -> sqlite3.Connection:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(account_id) REFERENCES users(account_id)
         );
+        CREATE TABLE IF NOT EXISTS position_settings (
+            account_id TEXT PRIMARY KEY,
+            target_percentage REAL NOT NULL DEFAULT 0 CHECK(target_percentage >= 0 AND target_percentage <= 100),
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(account_id) REFERENCES users(account_id)
+        );
         """
     )
     return connection
@@ -106,6 +112,30 @@ def list_traders() -> list[dict[str, str]]:
             "SELECT account_id, role, created_at FROM users WHERE role = 'trader' ORDER BY created_at DESC"
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_position_setting(account_id: str) -> dict[str, float]:
+    with _connection() as connection:
+        row = connection.execute(
+            "SELECT target_percentage FROM position_settings WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+    return {"target_percentage": float(row["target_percentage"]) if row else 0.0}
+
+
+def set_position_setting(account_id: str, target_percentage: float) -> dict[str, float]:
+    with _connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO position_settings (account_id, target_percentage)
+            VALUES (?, ?)
+            ON CONFLICT(account_id) DO UPDATE SET
+                target_percentage = excluded.target_percentage,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (account_id, target_percentage),
+        )
+    return {"target_percentage": target_percentage}
 
 
 def get_current_user(authorization: str | None = Header(default=None)) -> CurrentUser:

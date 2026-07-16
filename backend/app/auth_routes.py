@@ -2,8 +2,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from .auth import CurrentUser, assert_admin, create_trader, get_current_user, list_traders, login
-from .schemas import ApiResult, LoginRequest, TraderCreateRequest, UserInfo
+from .auth import (
+    CurrentUser,
+    assert_admin,
+    assert_trader,
+    create_trader,
+    get_current_user,
+    get_position_setting,
+    list_traders,
+    login,
+    set_position_setting,
+)
+from .schemas import ApiResult, LoginRequest, PositionSettingUpdate, TraderCreateRequest, UserInfo
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -35,3 +45,18 @@ def create_trader_user(request: TraderCreateRequest, user: CurrentUser = Depends
         return ApiResult(success=True, data=create_trader(request.account_id, request.password))
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/position-setting", response_model=ApiResult)
+def get_user_position_setting(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    return ApiResult(success=True, data=get_position_setting(user.account_id))
+
+
+@router.put("/position-setting", response_model=ApiResult)
+def update_user_position_setting(
+    request: PositionSettingUpdate,
+    user: CurrentUser = Depends(get_current_user),
+) -> ApiResult:
+    assert_trader(user)
+    return ApiResult(success=True, data=set_position_setting(user.account_id, request.target_percentage))
