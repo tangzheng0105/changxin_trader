@@ -44,3 +44,7 @@ npm run dev
 Open app: http://127.0.0.1:5173
 
 The Vite dev server proxies `/api` requests to `http://127.0.0.1:8000`.
+
+## Docker Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for Linux Docker deployment instructions.

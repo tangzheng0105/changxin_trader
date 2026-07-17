@@ -1,0 +1,16 @@
+.git
+.agents
+.codex
+backend/.env
+backend/data
+backend/userdata
+backend/__pycache__
+backend/**/*.pyc
+backend/*.log
+frontend/node_modules
+frontend/dist
+frontend/*.log
+refer/doc
+refer/test
+refer/lib/x64.Debug
+refer/lib/x64.Release
