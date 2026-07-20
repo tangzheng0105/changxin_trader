@@ -7,6 +7,8 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Row,
+  Col,
   Space,
   Table,
   Tooltip,
@@ -28,7 +30,14 @@ function liveMarketValue(position) {
   return Number.isFinite(lastPrice) && Number.isFinite(volume) ? lastPrice * volume : 0;
 }
 
-export default function StockPoolPage({ accountBalance, positions = [] }) {
+export default function StockPoolPage({
+  accountBalance,
+  positions = [],
+  onRebalancePreview,
+  rebalanceLoading = false,
+  positionPercentage = 0,
+  onOpenPositionSetting,
+}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -220,6 +229,21 @@ export default function StockPoolPage({ accountBalance, positions = [] }) {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)}>添加股票</Button>
         </Space>
       </section>
+
+      <Card className="workspace-card rebalance-settings-card" title="调仓设置">
+        <Row gutter={0} align="middle">
+          <Col xs={24} lg={12} className="rebalance-setting-section rebalance-position-section">
+            <Text type="secondary">目标仓位</Text>
+            <Space align="baseline" size={12} className="rebalance-position-action">
+              <Text className="rebalance-position-value">{Number(positionPercentage).toFixed(2)}%</Text>
+              <Button onClick={onOpenPositionSetting}>设置仓位</Button>
+            </Space>
+          </Col>
+          <Col xs={24} lg={12} className="rebalance-setting-section rebalance-action-section">
+            <Button type="primary" loading={rebalanceLoading} onClick={onRebalancePreview}>生成调仓方案</Button>
+          </Col>
+        </Row>
+      </Card>
 
       <Card
         className="workspace-card stock-pool-table"

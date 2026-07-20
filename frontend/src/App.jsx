@@ -370,7 +370,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [activeTab, setActiveTab] = useState("positions");
-  const [currentPage, setCurrentPage] = useState("trading");
+  const [currentPage, setCurrentPage] = useState("pool");
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [positionPercentage, setPositionPercentage] = useState(0);
@@ -569,7 +569,7 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (user) setCurrentPage(user.role === "admin" ? "users" : "trading");
+    if (user) setCurrentPage(user.role === "admin" ? "users" : "pool");
   }, [user]);
 
   function logout() {
@@ -599,7 +599,6 @@ export default function App() {
         <nav className="header-nav" aria-label="主导航">
           {user.role === "trader" && (
             <>
-              <Button type="text" className={`header-nav-item ${currentPage === "trading" ? "active" : ""}`} onClick={() => setCurrentPage("trading")}>交易界面</Button>
               <Button type="text" icon={<DatabaseOutlined />} className={`header-nav-item ${currentPage === "pool" ? "active" : ""}`} onClick={() => setCurrentPage("pool")}>股票池管理</Button>
               <Button type="text" icon={<ProfileOutlined />} className={`header-nav-item ${currentPage === "details" ? "active" : ""}`} onClick={() => setCurrentPage("details")}>账户明细</Button>
               <Button type="text" icon={<FileTextOutlined />} className={`header-nav-item ${currentPage === "logs" ? "active" : ""}`} onClick={() => setCurrentPage("logs")}>交易日志</Button>
@@ -621,14 +620,21 @@ export default function App() {
         {currentPage === "users" ? (
           <UserManagementPage />
         ) : currentPage === "pool" ? (
-          <StockPoolPage accountBalance={accountOverview.balance} positions={data.positions} />
+          <StockPoolPage
+            accountBalance={accountOverview.balance}
+            positions={data.positions}
+            onRebalancePreview={openRebalancePreview}
+            rebalanceLoading={creatingRebalancePlan}
+            positionPercentage={positionPercentage}
+            onOpenPositionSetting={openPositionSetting}
+          />
         ) : currentPage === "logs" ? (
           <TradeLogPage />
         ) : (
           <>
         <section className="page-title">
           <div>
-            <Title level={2}>{currentPage === "details" ? "账户明细" : "交易界面"}</Title>
+            <Title level={2}>{currentPage === "details" ? "账户明细" : "账户总览"}</Title>
             <Text type="secondary" className="account-meta">
               账号 {status?.account_id || "-"}，服务器 {status?.address || "-"}，账号名称：
               {accountOverview.accountName}，经纪公司编号：{accountOverview.brokerId}，经纪公司名称：
@@ -678,39 +684,6 @@ export default function App() {
           </Row>
         </Card>
 
-        {currentPage === "trading" && (
-          <Row gutter={[16, 16]}>
-            <Col xs={24} lg={12}>
-              <Card className="workspace-card" title="仓位设置">
-                <Row align="middle" justify="space-between" gutter={[16, 16]}>
-                  <Col>
-                    <Statistic title="目标仓位" value={positionPercentage} precision={2} suffix="%" />
-                  </Col>
-                  <Col>
-                    <Button type="primary" onClick={openPositionSetting}>
-                      设置仓位
-                    </Button>
-                  </Col>
-                </Row>
-              </Card>
-            </Col>
-            <Col xs={24} lg={12}>
-              <Card className="workspace-card" title="一键调仓">
-                <Row align="middle" justify="space-between" gutter={[16, 16]}>
-                  <Col>
-                    <Text type="secondary">按目标仓位等权分配股票池标的，池外持仓将生成卖出计划。</Text>
-                  </Col>
-                  <Col>
-                    <Button type="primary" loading={creatingRebalancePlan} onClick={openRebalancePreview}>
-                      生成调仓方案
-                    </Button>
-                  </Col>
-                </Row>
-              </Card>
-            </Col>
-          </Row>
-        )}
-
         <Modal
           title="设置仓位"
           open={positionModalOpen}
@@ -731,7 +704,7 @@ export default function App() {
           </Form>
         </Modal>
 
-        <Modal
+        {currentPage !== "pool" && <Modal
           title="一键调仓方案"
           open={rebalanceModalOpen}
           width={1050}
@@ -795,7 +768,7 @@ export default function App() {
               },
             ]}
           />
-        </Modal>
+        </Modal>}
 
         <Row gutter={[16, 16]}>
           {currentPage === "details" && (
@@ -845,6 +818,90 @@ export default function App() {
         </Row>
           </>
         )}
+        {currentPage === "pool" && <Modal
+          title="设置仓位"
+          open={positionModalOpen}
+          onCancel={() => setPositionModalOpen(false)}
+          onOk={() => positionSettingForm.submit()}
+          confirmLoading={savingPositionSetting}
+          okText="保存"
+          cancelText="取消"
+        >
+          <Form form={positionSettingForm} layout="vertical" onFinish={savePositionSetting}>
+            <Form.Item
+              name="target_percentage"
+              label="目标仓位"
+              rules={[{ required: true, message: "请输入仓位百分比" }]}
+            >
+              <InputNumber min={0} max={100} precision={2} addonAfter="%" className="full-width" />
+            </Form.Item>
+          </Form>
+        </Modal>}
+        {currentPage === "pool" && <Modal
+          title="一键调仓方案"
+          open={rebalanceModalOpen}
+          width={1050}
+          onCancel={() => setRebalanceModalOpen(false)}
+          footer={[
+            <Button key="cancel" onClick={() => setRebalanceModalOpen(false)}>取消</Button>,
+            <DatePicker
+              key="scheduled-at"
+              showTime={{ format: "HH:mm", minuteStep: 1 }}
+              format="YYYY-MM-DD HH:mm"
+              placeholder="定时开始时间"
+              value={scheduledAt}
+              onChange={setScheduledAt}
+            />,
+            <Button key="schedule" loading={executingRebalance} onClick={scheduleRebalancePlan}>定时执行</Button>,
+            <Button key="execute" type="primary" loading={executingRebalance} onClick={runRebalanceNow}>立即执行</Button>,
+          ]}
+        >
+          <Row gutter={[16, 8]} className="rebalance-summary">
+            <Col><Text>目标仓位：{numberText(rebalancePlan?.target_percentage)}%</Text></Col>
+            <Col><Text>目标资金（万元）：{tenThousandMoney(rebalancePlan?.target_total_value)}</Text></Col>
+            <Col><Text>待执行：{rebalancePlan?.tradable_count ?? 0} 笔</Text></Col>
+            <Col><Text style={{ color: "#cf1322" }}>预计买入（万元）：{tenThousandMoney(rebalanceAmounts.buy)}</Text></Col>
+            <Col><Text style={{ color: "#1677ff" }}>预计卖出（万元）：{tenThousandMoney(rebalanceAmounts.sell)}</Text></Col>
+          </Row>
+          <Table
+            rowKey={(item) => `${item.code}-${item.action}`}
+            size="small"
+            pagination={{ pageSize: 8, showSizeChanger: false }}
+            dataSource={rebalancePlan?.items ?? []}
+            columns={[
+              { title: "序号", key: "index", width: 70, align: "center", render: (_, __, index) => index + 1 },
+              { title: "证券", key: "security", render: (_, item) => <div className="instrument-cell"><Text strong>{item.name}</Text><Text type="secondary">{item.code} / {item.market}</Text></div> },
+              {
+                title: "操作",
+                dataIndex: "action",
+                render: (action) => (
+                  <span style={{ color: action === "BUY" ? "#cf1322" : action === "SELL" ? "#1677ff" : undefined }}>
+                    {{ BUY: "买入", SELL: "卖出", HOLD: "不调整", SKIP: "跳过" }[action] ?? action}
+                  </span>
+                ),
+              },
+              { title: "当前数量", dataIndex: "current_quantity", align: "right", render: (value) => numberText(value, 0) },
+              { title: "目标数量", dataIndex: "target_quantity", align: "right", render: (value) => numberText(value, 0) },
+              {
+                title: "变化数量",
+                dataIndex: "quantity",
+                align: "right",
+                render: (value, item) => (
+                  <span style={{ color: item.action === "BUY" ? "#cf1322" : item.action === "SELL" ? "#1677ff" : undefined }}>
+                    {numberText(value, 0)}
+                  </span>
+                ),
+              },
+              { title: "参考价", dataIndex: "price", align: "right", render: (value) => numberText(value, 3) },
+              {
+                title: "调整后市值（万元）",
+                key: "target_market_value",
+                align: "right",
+                render: (_, item) => tenThousandMoney(Number(item.target_quantity) * Number(item.price)),
+              },
+            ]}
+          />
+        </Modal>}
       </Content>
     </Layout>
   );
