@@ -54,6 +54,19 @@ def list_stock_pool() -> list[dict[str, Any]]:
     return [_row_to_dict(row) for row in rows]
 
 
+def list_stock_pool_by_ids(stock_ids: list[int]) -> list[dict[str, Any]]:
+    unique_ids = list(dict.fromkeys(stock_ids))
+    if not unique_ids:
+        return []
+    with _connection() as connection:
+        rows = connection.execute(
+            f"SELECT * FROM stock_pool WHERE id IN ({','.join('?' for _ in unique_ids)})",
+            unique_ids,
+        ).fetchall()
+    rows_by_id = {row["id"]: _row_to_dict(row) for row in rows}
+    return [rows_by_id[stock_id] for stock_id in unique_ids if stock_id in rows_by_id]
+
+
 def quote_prices(codes: list[str]) -> dict[str, float]:
     unique_codes = list(dict.fromkeys(code for code in codes if CODE_PATTERN.fullmatch(code)))
     if not unique_codes:

@@ -73,6 +73,17 @@ class StockPoolBatchDelete(BaseModel):
     ids: list[int] = Field(..., min_length=1)
 
 
+class StockPoolSelectedTradeRequest(BaseModel):
+    ids: list[int] = Field(..., min_length=1)
+    amount_wan: float = Field(..., ge=0)
+
+
+class StockPoolSingleTradeRequest(BaseModel):
+    stock_id: int = Field(..., gt=0)
+    amount_wan: float = Field(..., ge=0)
+    operation: Literal["BUY", "SELL"] = "BUY"
+
+
 class StockPoolUpdate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     current_price: float = Field(..., ge=0)

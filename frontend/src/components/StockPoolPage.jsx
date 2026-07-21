@@ -1,4 +1,4 @@
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
+import { DeleteOutlined, PlusOutlined, ReloadOutlined, SwapOutlined, UploadOutlined } from "@ant-design/icons";
 import {
   Button,
   Card,
@@ -19,7 +19,7 @@ import {
   message,
 } from "antd";
 import { useEffect, useMemo, useState } from "react";
-import { addStockPool, deleteStockPool, deleteStockPoolBatch, getStockKline, getStockPool, updateStockPool } from "../api/client";
+import { addStockPool, deleteStockPool, deleteStockPoolBatch, executeSelectedStockTrade, executeSingleStockTrade, getStockKline, getStockPool, previewSelectedStockTrade, previewSingleStockTrade, updateStockPool } from "../api/client";
 import KlineChart from "./KlineChart";
 
 const { Text, Title } = Typography;
@@ -40,6 +40,8 @@ export default function StockPoolPage({
   rebalanceLoading = false,
   positionPercentage = 0,
   onOpenPositionSetting,
+  onTradeSubmitted,
+  traderConnected = false,
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +54,17 @@ export default function StockPoolPage({
   const [klineBars, setKlineBars] = useState([]);
   const [klineLoading, setKlineLoading] = useState(false);
   const [klineInterval, setKlineInterval] = useState("day");
+  const [selectedTradeOpen, setSelectedTradeOpen] = useState(false);
+  const [selectedTradePreview, setSelectedTradePreview] = useState(null);
+  const [selectedTradeAmount, setSelectedTradeAmount] = useState(null);
+  const [selectedTradeLoading, setSelectedTradeLoading] = useState(false);
+  const [selectedTradeExecuting, setSelectedTradeExecuting] = useState(false);
+  const [singleTradeStock, setSingleTradeStock] = useState(null);
+  const [singleTradePreview, setSingleTradePreview] = useState(null);
+  const [singleTradeOperation, setSingleTradeOperation] = useState("BUY");
+  const [singleTradeAmount, setSingleTradeAmount] = useState(null);
+  const [singleTradeLoading, setSingleTradeLoading] = useState(false);
+  const [singleTradeExecuting, setSingleTradeExecuting] = useState(false);
   const [form] = Form.useForm();
   const [addForm] = Form.useForm();
 
@@ -160,6 +173,125 @@ export default function StockPoolPage({
     }
   }
 
+  async function openSelectedTrade() {
+    if (!selectedRowKeys.length) return;
+    if (!traderConnected) {
+      message.warning("请先连接交易接口");
+      return;
+    }
+    setSelectedTradeOpen(true);
+    setSelectedTradePreview(null);
+    setSelectedTradeAmount(null);
+    setSelectedTradeLoading(true);
+    try {
+      const result = await previewSelectedStockTrade({ ids: selectedRowKeys, amount_wan: 0 });
+      setSelectedTradePreview(result.data);
+    } catch (error) {
+      message.error(error.message);
+      setSelectedTradeOpen(false);
+    } finally {
+      setSelectedTradeLoading(false);
+    }
+  }
+
+  const selectedTradeItems = useMemo(() => {
+    const items = selectedTradePreview?.items ?? [];
+    const totalAmount = Number(selectedTradeAmount || 0) * 10000;
+    const allocation = items.length ? totalAmount / items.length : 0;
+    return items.map((item) => {
+      const buyVolume = Math.floor(allocation / Number(item.price) / 100) * 100;
+      const plannedVolume = Number.isFinite(buyVolume) ? Math.max(0, buyVolume) : 0;
+      return { ...item, buy_volume: plannedVolume, estimated_amount: plannedVolume * Number(item.price) };
+    });
+  }, [selectedTradeAmount, selectedTradePreview]);
+
+  async function executeSelectedTrade() {
+    if (!selectedTradeAmount || Number(selectedTradeAmount) <= 0) {
+      message.warning("请输入交易金额");
+      return;
+    }
+    setSelectedTradeExecuting(true);
+    try {
+      const result = await executeSelectedStockTrade({ ids: selectedRowKeys, amount_wan: Number(selectedTradeAmount) });
+      const succeeded = (result.data?.results ?? []).filter((item) => item.success).length;
+      message.success(`已提交 ${succeeded} 笔智能算法买入委托`);
+      setSelectedTradeOpen(false);
+      setSelectedRowKeys([]);
+      await loadPool();
+      await onTradeSubmitted?.();
+    } catch (error) {
+      message.error(error.message);
+    } finally {
+      setSelectedTradeExecuting(false);
+    }
+  }
+
+  async function loadSingleTradePreview(stock, operation) {
+    setSingleTradePreview(null);
+    setSingleTradeLoading(true);
+    try {
+      const result = await previewSingleStockTrade({ stock_id: stock.id, amount_wan: 0, operation });
+      setSingleTradePreview(result.data);
+    } catch (error) {
+      message.error(error.message);
+      setSingleTradeStock(null);
+    } finally {
+      setSingleTradeLoading(false);
+    }
+  }
+
+  async function openSingleTrade(stock) {
+    if (!traderConnected) {
+      message.warning("请先连接交易接口");
+      return;
+    }
+    setSingleTradeStock(stock);
+    setSingleTradeOperation("BUY");
+    setSingleTradeAmount(null);
+    await loadSingleTradePreview(stock, "BUY");
+  }
+
+  function changeSingleTradeOperation(operation) {
+    setSingleTradeOperation(operation);
+    setSingleTradeAmount(null);
+    if (singleTradeStock) loadSingleTradePreview(singleTradeStock, operation);
+  }
+
+  const singleTradePlan = useMemo(() => {
+    const item = singleTradePreview?.item;
+    if (!item) return null;
+    const amount = Number(singleTradeAmount || 0) * 10000;
+    const volume = Math.floor(amount / Number(item.price) / 100) * 100;
+    return {
+      ...item,
+      volume: Number.isFinite(volume) ? Math.max(0, volume) : 0,
+      marketValue: Number.isFinite(volume) ? Math.max(0, volume) * Number(item.price) : 0,
+    };
+  }, [singleTradeAmount, singleTradePreview]);
+
+  async function executeSingleTrade() {
+    if (!singleTradeAmount || Number(singleTradeAmount) <= 0) {
+      message.warning("请输入交易金额");
+      return;
+    }
+    setSingleTradeExecuting(true);
+    try {
+      const result = await executeSingleStockTrade({
+        stock_id: singleTradeStock.id,
+        amount_wan: Number(singleTradeAmount),
+        operation: singleTradeOperation,
+      });
+      message.success(`已提交智能算法${singleTradeOperation === "BUY" ? "买入" : "卖出"}委托，指令号：${result.data.order_id}`);
+      setSingleTradeStock(null);
+      await loadPool();
+      await onTradeSubmitted?.();
+    } catch (error) {
+      message.error(error.message);
+    } finally {
+      setSingleTradeExecuting(false);
+    }
+  }
+
   async function importTextFile(file) {
     if (!file.name.toLowerCase().endsWith(".txt")) {
       message.error("仅支持 TXT 文件");
@@ -232,8 +364,8 @@ export default function StockPoolPage({
       align: "center",
       render: (_, row) => (
         <Space size={4}>
-          <Tooltip title="编辑持仓">
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(row)} />
+          <Tooltip title="交易">
+            <Button type="text" icon={<SwapOutlined />} onClick={() => openSingleTrade(row)} />
           </Tooltip>
           <Popconfirm title="删除这只股票？" okText="删除" cancelText="取消" onConfirm={() => removeStock(row)}>
             <Tooltip title="删除">
@@ -282,6 +414,9 @@ export default function StockPoolPage({
         extra={
           <Space>
             <Text type="secondary">实时总资产：{totalAssets.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+            <Tooltip title={traderConnected ? "按金额平均买入已选股票" : "请先连接交易接口"}>
+              <Button type="primary" disabled={!selectedRowKeys.length || !traderConnected} onClick={openSelectedTrade}>交易已选</Button>
+            </Tooltip>
             <Popconfirm
               title={`删除已选的 ${selectedRowKeys.length} 只股票？`}
               okText="删除"
@@ -312,6 +447,105 @@ export default function StockPoolPage({
           }}
         />
       </Card>
+
+      <Modal
+        title={singleTradeStock ? `交易 - ${singleTradeStock.name}` : "交易"}
+        open={Boolean(singleTradeStock)}
+        width={620}
+        onCancel={() => setSingleTradeStock(null)}
+        onOk={executeSingleTrade}
+        confirmLoading={singleTradeExecuting}
+        okText={`确认${singleTradeOperation === "BUY" ? "买入" : "卖出"}`}
+        cancelText="取消"
+        okButtonProps={{ disabled: singleTradeLoading || !singleTradeAmount || Number(singleTradeAmount) <= 0 }}
+      >
+        {singleTradeLoading ? (
+          <div className="single-trade-loading"><Spin tip="加载交易数据" /></div>
+        ) : singleTradePlan && (
+          <>
+            <Segmented
+              value={singleTradeOperation}
+              options={[{ label: "买入", value: "BUY" }, { label: "卖出", value: "SELL" }]}
+              onChange={changeSingleTradeOperation}
+              className="single-trade-operation"
+            />
+            <Table
+              rowKey="code"
+              size="small"
+              pagination={false}
+              dataSource={[singleTradePlan]}
+              columns={[
+                { title: "股票名称", key: "instrument", render: (_, item) => <div className="instrument-cell"><Text strong>{item.name}</Text><Text type="secondary">{item.code}</Text></div> },
+                { title: "当前持仓", dataIndex: "position", align: "right", render: (value) => Number(value).toLocaleString("zh-CN") },
+                { title: "参考价格", dataIndex: "price", align: "right", render: (value) => Number(value).toFixed(3) },
+              ]}
+            />
+            <Form layout="vertical" className="single-trade-form">
+              <Form.Item label={`交易金额（万元）${singleTradeOperation === "SELL" ? `，可卖上限 ${(Number(singleTradePlan.position) * Number(singleTradePlan.price) / 10000).toFixed(2)} 万元` : ""}`} required>
+                <InputNumber
+                  min={0.01}
+                  max={singleTradeOperation === "SELL" ? Number(singleTradePlan.position) * Number(singleTradePlan.price) / 10000 : undefined}
+                  precision={2}
+                  value={singleTradeAmount}
+                  onChange={setSingleTradeAmount}
+                  addonAfter="万元"
+                  className="trade-amount-input"
+                />
+              </Form.Item>
+            </Form>
+            <Text type="secondary">计划{singleTradeOperation === "BUY" ? "买入" : "卖出"}：{Number(singleTradePlan.volume).toLocaleString("zh-CN")} 股，预计市值：{(singleTradePlan.marketValue / 10000).toFixed(2)} 万元</Text>
+          </>
+        )}
+      </Modal>
+
+      <Modal
+        title="交易已选股票"
+        open={selectedTradeOpen}
+        width={860}
+        onCancel={() => setSelectedTradeOpen(false)}
+        onOk={executeSelectedTrade}
+        confirmLoading={selectedTradeExecuting}
+        okText="确认买入"
+        cancelText="取消"
+        okButtonProps={{ disabled: selectedTradeLoading || !selectedTradeAmount || Number(selectedTradeAmount) <= 0 }}
+      >
+        <Form layout="vertical">
+          <Form.Item label="交易金额（万元）" required>
+            <InputNumber
+              min={0.01}
+              precision={2}
+              value={selectedTradeAmount}
+              onChange={setSelectedTradeAmount}
+              addonAfter="万元"
+              className="trade-amount-input"
+              placeholder="输入后将平均分配给已选股票"
+            />
+          </Form.Item>
+        </Form>
+        <Table
+          rowKey="id"
+          size="small"
+          loading={selectedTradeLoading}
+          pagination={false}
+          dataSource={selectedTradeItems}
+          columns={[
+            {
+              title: "股票名称",
+              key: "instrument",
+              render: (_, item) => (
+                <div className="instrument-cell">
+                  <Text strong className="instrument-name">{item.name}</Text>
+                  <Text type="secondary">{item.code}</Text>
+                </div>
+              ),
+            },
+            { title: "持仓", dataIndex: "position", width: 120, align: "right", render: (value) => Number(value).toLocaleString("zh-CN") },
+            { title: "价格", dataIndex: "price", width: 120, align: "right", render: (value) => Number(value).toFixed(3) },
+            { title: "计划买入", dataIndex: "buy_volume", width: 120, align: "right", render: (value) => Number(value).toLocaleString("zh-CN") },
+            { title: "计划买入市值（万元）", dataIndex: "estimated_amount", width: 160, align: "right", render: (value) => (Number(value) / 10000).toFixed(2) },
+          ]}
+        />
+      </Modal>
 
       <Modal
         title="添加股票"

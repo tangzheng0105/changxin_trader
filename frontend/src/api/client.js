@@ -169,3 +169,31 @@ export function deleteStockPoolBatch(ids) {
     body: JSON.stringify({ ids }),
   });
 }
+
+export function previewSelectedStockTrade(payload) {
+  return request("/api/stock-pool/trade-selected/preview", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function executeSelectedStockTrade(payload) {
+  return request("/api/stock-pool/trade-selected/execute", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function previewSingleStockTrade(payload) {
+  return request("/api/stock-pool/trade-single/preview", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function executeSingleStockTrade(payload) {
+  return request("/api/stock-pool/trade-single/execute", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

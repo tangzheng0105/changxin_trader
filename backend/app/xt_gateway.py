@@ -88,6 +88,15 @@ class XtTraderGateway:
 
     def connect(self, account_id: str) -> dict[str, Any]:
         with self._lock:
+            try:
+                return self._connect_and_verify(account_id)
+            except XtTraderGatewayError:
+                # The native client can retain a stale socket after a remote-side
+                # disconnect. Recreate it once before reporting a connection error.
+                self._invalidate_connection()
+                return self._connect_and_verify(account_id)
+
+    def _connect_and_verify(self, account_id: str) -> dict[str, Any]:
             self._ensure_api()
             self._ensure_connected()
             self._ensure_logged_in()

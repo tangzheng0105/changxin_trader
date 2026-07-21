@@ -220,6 +220,25 @@ body {
   justify-content: center;
 }
 
+.trade-amount-input {
+  width: 280px;
+}
+
+.single-trade-operation {
+  margin-bottom: 16px;
+}
+
+.single-trade-form {
+  margin-top: 16px;
+}
+
+.single-trade-loading {
+  display: flex;
+  min-height: 240px;
+  align-items: center;
+  justify-content: center;
+}
+
 @media (max-width: 720px) {
   .app-content {
     padding: 24px 0;

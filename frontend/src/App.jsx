@@ -671,6 +671,8 @@ export default function App() {
             rebalanceLoading={creatingRebalancePlan}
             positionPercentage={positionPercentage}
             onOpenPositionSetting={openPositionSetting}
+            onTradeSubmitted={refreshData}
+            traderConnected={connected}
           />
         ) : currentPage === "logs" ? (
           <TradeLogPage />
