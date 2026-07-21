@@ -398,10 +398,13 @@ export default function App() {
 
   const accountOverview = useMemo(() => {
     const account = data.account ?? {};
+    const balance = pick(account, ["m_dBalance", "m_dAssetBalance", "m_dTotalAsset", "m_dTotalAssets"], 0);
+    const stockValue = pick(account, ["m_dInstrumentValue", "m_dStockValue", "m_dMarketValue"], 0);
     return {
-      balance: pick(account, ["m_dBalance", "m_dAssetBalance", "m_dTotalAsset", "m_dTotalAssets"], 0),
+      balance,
       available: pick(account, ["m_dAvailable", "m_dEnableBalance"], 0),
-      stockValue: pick(account, ["m_dInstrumentValue", "m_dStockValue", "m_dMarketValue"], 0),
+      stockValue,
+      positionRatio: Number(balance) > 0 ? (Number(stockValue) / Number(balance)) * 100 : 0,
       positionProfit: pick(account, ["m_dPositionProfit", "m_dFloatProfit"], 0),
       daysProfit: pick(account, ["m_dDaysProfit", "m_dTodayProfit"], 0),
       accountName: pick(account, ["m_strAccountName", "m_strName"], "长心股票test2"),
@@ -666,6 +669,9 @@ export default function App() {
             </Col>
             <Col xs={24} sm={12} lg={8} xl={4}>
               <Statistic title="股票总市值（万元）" value={tenThousandMoney(accountOverview.stockValue)} />
+            </Col>
+            <Col xs={24} sm={12} lg={8} xl={4}>
+              <Statistic title="持仓比例" value={accountOverview.positionRatio} precision={2} suffix="%" />
             </Col>
             <Col xs={24} sm={12} lg={8} xl={4}>
               <Statistic

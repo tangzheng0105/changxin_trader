@@ -19,12 +19,14 @@ function jsonText(value) {
 export default function TradeLogPage() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
 
   async function loadLogs() {
     setLoading(true);
     try {
       const result = await getTradeLogs();
       setLogs(result.data ?? []);
+      setPagination((previous) => ({ ...previous, current: 1 }));
     } finally {
       setLoading(false);
     }
@@ -50,7 +52,17 @@ export default function TradeLogPage() {
           loading={loading}
           dataSource={logs}
           scroll={{ x: true }}
-          pagination={{ pageSize: 10, showSizeChanger: true, showQuickJumper: true }}
+          pagination={{
+            ...pagination,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            showQuickJumper: true,
+            onChange: (current, pageSize) =>
+              setPagination((previous) => ({
+                current: pageSize === previous.pageSize ? current : 1,
+                pageSize,
+              })),
+          }}
           columns={[
             { title: "时间", dataIndex: "created_at", width: 170 },
             { title: "类型", dataIndex: "action", width: 140, render: (action) => actionLabels[action] ?? action },
