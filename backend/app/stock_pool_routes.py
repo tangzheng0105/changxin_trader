@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from .auth import CurrentUser, assert_trader, get_current_user
 from .schemas import ApiResult, StockPoolBatchCreate, StockPoolBatchDelete, StockPoolUpdate
-from .stock_pool import add_stock_codes, delete_stock_pool, delete_stock_pool_many, list_stock_pool, search_securities, update_stock_pool
+from .stock_pool import add_stock_codes, delete_stock_pool, delete_stock_pool_many, get_stock_kline, list_stock_pool, search_securities, update_stock_pool
 
 
 router = APIRouter(prefix="/api/stock-pool", tags=["stock-pool"])
@@ -20,6 +20,17 @@ def get_stock_pool(user: CurrentUser = Depends(get_current_user)) -> ApiResult:
 def search_stock_pool(query: str = "", user: CurrentUser = Depends(get_current_user)) -> ApiResult:
     assert_trader(user)
     return ApiResult(success=True, data=search_securities(query))
+
+
+@router.get("/{code}/kline", response_model=ApiResult)
+def get_stock_kline_data(code: str, interval: str = "day", user: CurrentUser = Depends(get_current_user)) -> ApiResult:
+    assert_trader(user)
+    try:
+        return ApiResult(success=True, data=get_stock_kline(code, interval))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post("", response_model=ApiResult)

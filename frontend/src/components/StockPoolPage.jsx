@@ -8,8 +8,10 @@ import {
   Modal,
   Popconfirm,
   Row,
+  Segmented,
   Col,
   Space,
+  Spin,
   Table,
   Tooltip,
   Typography,
@@ -17,7 +19,8 @@ import {
   message,
 } from "antd";
 import { useEffect, useMemo, useState } from "react";
-import { addStockPool, deleteStockPool, deleteStockPoolBatch, getStockPool, updateStockPool } from "../api/client";
+import { addStockPool, deleteStockPool, deleteStockPoolBatch, getStockKline, getStockPool, updateStockPool } from "../api/client";
+import KlineChart from "./KlineChart";
 
 const { Text, Title } = Typography;
 
@@ -45,6 +48,10 @@ export default function StockPoolPage({
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [klineStock, setKlineStock] = useState(null);
+  const [klineBars, setKlineBars] = useState([]);
+  const [klineLoading, setKlineLoading] = useState(false);
+  const [klineInterval, setKlineInterval] = useState("day");
   const [form] = Form.useForm();
   const [addForm] = Form.useForm();
 
@@ -95,6 +102,30 @@ export default function StockPoolPage({
       cost_price: row.cost_price,
       quantity: row.quantity,
     });
+  }
+
+  async function openKline(row) {
+    setKlineStock(row);
+    setKlineInterval("day");
+    await loadKline(row, "day");
+  }
+
+  async function loadKline(row, interval) {
+    setKlineBars([]);
+    setKlineLoading(true);
+    try {
+      const result = await getStockKline(row.code, interval);
+      setKlineBars(result.data ?? []);
+    } catch (error) {
+      message.error(error.message);
+    } finally {
+      setKlineLoading(false);
+    }
+  }
+
+  function changeKlineInterval(interval) {
+    setKlineInterval(interval);
+    if (klineStock) loadKline(klineStock, interval);
   }
 
   async function saveEdit(values) {
@@ -181,7 +212,7 @@ export default function StockPoolPage({
       width: 220,
       render: (_, row) => (
         <div className="instrument-cell">
-          <Text strong className="instrument-name">{row.name}</Text>
+          <Button type="link" className="stock-name-button" onClick={() => openKline(row)}>{row.name}</Button>
           <Text type="secondary">{row.code}</Text>
         </div>
       ),
@@ -323,6 +354,31 @@ export default function StockPoolPage({
             <InputNumber min={0} precision={0} className="full-width" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={klineStock ? `${klineStock.name} ${klineStock.code} 日K` : "日K"}
+        open={Boolean(klineStock)}
+        width={900}
+        footer={null}
+        onCancel={() => setKlineStock(null)}
+        destroyOnHidden
+      >
+        {klineLoading ? (
+          <div className="kline-loading"><Spin tip="加载行情数据" /></div>
+        ) : (
+          <>
+            <Space className="kline-toolbar" align="center">
+              <Segmented
+                value={klineInterval}
+                options={[{ label: "日K", value: "day" }, { label: "小时K", value: "hour" }]}
+                onChange={changeKlineInterval}
+              />
+              <Text type="secondary">红色为上涨，绿色为下跌，蓝线为 60 日均线。</Text>
+            </Space>
+            {klineBars.length > 0 && <KlineChart bars={klineBars} />}
+          </>
+        )}
       </Modal>
     </section>
   );

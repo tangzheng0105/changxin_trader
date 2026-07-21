@@ -21,7 +21,9 @@ import {
   Layout,
   Modal,
   Row,
+  Segmented,
   Space,
+  Spin,
   Statistic,
   Table,
   Tabs,
@@ -38,6 +40,7 @@ import {
   getPositionSetting,
   getOrders,
   getPositions,
+  getStockKline,
   getTraderStatus,
   getAuthToken,
   getCurrentUser,
@@ -49,6 +52,7 @@ import {
 } from "./api/client";
 import DataGrid from "./components/DataGrid";
 import LoginPage from "./components/LoginPage";
+import KlineChart from "./components/KlineChart";
 import StockPoolPage from "./components/StockPoolPage";
 import TradeLogPage from "./components/TradeLogPage";
 import UserManagementPage from "./components/UserManagementPage";
@@ -124,7 +128,8 @@ function profitClassName(value) {
   return numberValue > 0 ? "profit-positive" : "profit-negative";
 }
 
-const positionColumns = [
+function createPositionColumns(onOpenKline) {
+  return [
   {
     title: "证券",
     key: "instrument",
@@ -132,7 +137,9 @@ const positionColumns = [
     fixed: "left",
     render: (_, row) => (
       <div className="instrument-cell">
-        <Text strong className="instrument-name">{row.m_strInstrumentName || "-"}</Text>
+        <Button type="link" className="stock-name-button" onClick={() => onOpenKline(row)}>
+          {row.m_strInstrumentName || row.m_strInstrumentID || "-"}
+        </Button>
         <Text type="secondary">
           {row.m_strInstrumentID || "-"} / {row.m_strExchangeID || row.m_strMarket || "-"}
         </Text>
@@ -181,7 +188,8 @@ const positionColumns = [
     sorter: (left, right) => Number(left.m_dMarketValue ?? left.m_dInstrumentValue ?? 0) - Number(right.m_dMarketValue ?? right.m_dInstrumentValue ?? 0),
     render: (value, row) => numberText(value ?? row.m_dInstrumentValue),
   },
-];
+  ];
+}
 
 function transactionErrorMessage(row) {
   return row.m_strErrorMsg || row.m_strCancelInfo || "-";
@@ -382,6 +390,10 @@ export default function App() {
   const [creatingRebalancePlan, setCreatingRebalancePlan] = useState(false);
   const [executingRebalance, setExecutingRebalance] = useState(false);
   const [scheduledAt, setScheduledAt] = useState(null);
+  const [positionKlineStock, setPositionKlineStock] = useState(null);
+  const [positionKlineBars, setPositionKlineBars] = useState([]);
+  const [positionKlineLoading, setPositionKlineLoading] = useState(false);
+  const [positionKlineInterval, setPositionKlineInterval] = useState("day");
 
   const rebalanceAmounts = useMemo(() => {
     return (rebalancePlan?.items ?? []).reduce(
@@ -532,6 +544,35 @@ export default function App() {
     } finally {
       setExecutingRebalance(false);
     }
+  }
+
+  async function loadPositionKline(row, interval) {
+    const code = String(row?.m_strInstrumentID || "").trim();
+    if (!code) {
+      message.error("未获取到证券代码");
+      return;
+    }
+    setPositionKlineBars([]);
+    setPositionKlineLoading(true);
+    try {
+      const result = await getStockKline(code, interval);
+      setPositionKlineBars(result.data ?? []);
+    } catch (error) {
+      message.error(error.message);
+    } finally {
+      setPositionKlineLoading(false);
+    }
+  }
+
+  async function openPositionKline(row) {
+    setPositionKlineStock(row);
+    setPositionKlineInterval("day");
+    await loadPositionKline(row, "day");
+  }
+
+  function changePositionKlineInterval(interval) {
+    setPositionKlineInterval(interval);
+    if (positionKlineStock) loadPositionKline(positionKlineStock, interval);
   }
 
   useEffect(() => {
@@ -791,7 +832,7 @@ export default function App() {
                       <DataGrid
                         rows={data.positions}
                         loading={loading && activeTab === "positions"}
-                        columns={positionColumns}
+                        columns={createPositionColumns(openPositionKline)}
                       />
                     ),
                   },
@@ -908,6 +949,30 @@ export default function App() {
             ]}
           />
         </Modal>}
+        <Modal
+          title={positionKlineStock ? `${positionKlineStock.m_strInstrumentName || positionKlineStock.m_strInstrumentID} ${positionKlineStock.m_strInstrumentID} K线` : "K线"}
+          open={Boolean(positionKlineStock)}
+          width={900}
+          footer={null}
+          onCancel={() => setPositionKlineStock(null)}
+          destroyOnHidden
+        >
+          {positionKlineLoading ? (
+            <div className="kline-loading"><Spin tip="加载行情数据" /></div>
+          ) : (
+            <>
+              <Space className="kline-toolbar" align="center">
+                <Segmented
+                  value={positionKlineInterval}
+                  options={[{ label: "日K", value: "day" }, { label: "小时K", value: "hour" }]}
+                  onChange={changePositionKlineInterval}
+                />
+                <Text type="secondary">红色为上涨，绿色为下跌，蓝线为 60 日均线。</Text>
+              </Space>
+              {positionKlineBars.length > 0 && <KlineChart bars={positionKlineBars} />}
+            </>
+          )}
+        </Modal>
       </Content>
     </Layout>
   );

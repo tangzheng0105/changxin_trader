@@ -190,6 +190,36 @@ body {
   border-left: 1px solid #edf0f5;
 }
 
+.stock-name-button {
+  display: block;
+  height: auto;
+  padding: 0;
+  color: #1f2633;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.stock-name-button:hover {
+  color: #1677ff;
+}
+
+.kline-chart {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.kline-toolbar {
+  margin-top: 4px;
+}
+
+.kline-loading {
+  display: flex;
+  min-height: 460px;
+  align-items: center;
+  justify-content: center;
+}
+
 @media (max-width: 720px) {
   .app-content {
     padding: 24px 0;

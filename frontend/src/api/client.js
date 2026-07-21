@@ -137,6 +137,10 @@ export function getStockPool() {
   return request("/api/stock-pool");
 }
 
+export function getStockKline(code, interval = "day") {
+  return request(`/api/stock-pool/${encodeURIComponent(code)}/kline?interval=${encodeURIComponent(interval)}`);
+}
+
 export function searchStockPool(query) {
   return request(`/api/stock-pool/search?query=${encodeURIComponent(query)}`);
 }

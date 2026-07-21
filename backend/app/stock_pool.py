@@ -13,6 +13,8 @@ DATABASE_PATH = Path(__file__).resolve().parents[1] / "data" / "stock_pool.db"
 CODE_PATTERN = re.compile(r"^\d{6}$")
 TENCENT_SUGGEST_URL = "https://smartbox.gtimg.cn/s3/"
 TENCENT_QUOTE_URL = "https://qt.gtimg.cn/q="
+TENCENT_KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 
 
 def _connection() -> sqlite3.Connection:
@@ -77,6 +79,92 @@ def quote_prices(codes: list[str]) -> dict[str, float]:
         if price > 0:
             prices[match.group(1)] = price
     return prices
+
+
+def get_daily_kline(code: str, days: int = 180) -> list[dict[str, float | str]]:
+    if not CODE_PATTERN.fullmatch(code):
+        raise ValueError("证券代码必须为 6 位数字")
+
+    symbol = f"{'sh' if code.startswith(('6', '9')) else 'sz'}{code}"
+    request_url = f"{TENCENT_KLINE_URL}?{urlencode({'param': f'{symbol},day,,,{days},qfq'})}"
+    try:
+        with urlopen(request_url, timeout=8) as response:  # nosec B310 - public market data endpoint
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError("行情服务暂时不可用") from exc
+
+    quote_data = payload.get("data", {}).get(symbol, {})
+    raw_bars = quote_data.get("qfqday") or quote_data.get("day") or []
+    bars: list[dict[str, float | str]] = []
+    for bar in raw_bars:
+        try:
+            date, open_price, close_price, high_price, low_price = bar[:5]
+            values = {
+                "time": str(date),
+                "open": float(open_price),
+                "high": float(high_price),
+                "low": float(low_price),
+                "close": float(close_price),
+            }
+        except (TypeError, ValueError, IndexError):
+            continue
+        if all(float(values[key]) > 0 for key in ("open", "high", "low", "close")):
+            bars.append(values)
+
+    if not bars:
+        raise RuntimeError("未获取到该证券的日 K 数据")
+    return bars
+
+
+def get_hourly_kline(code: str, bars_count: int = 180) -> list[dict[str, float | str]]:
+    if not CODE_PATTERN.fullmatch(code):
+        raise ValueError("证券代码必须为 6 位数字")
+
+    market = "1" if code.startswith(("6", "9")) else "0"
+    request_url = f"{EASTMONEY_KLINE_URL}?{urlencode({
+        'secid': f'{market}.{code}',
+        'klt': '60',
+        'fqt': '1',
+        'lmt': str(bars_count),
+        'end': '20500101',
+        'fields1': 'f1,f2,f3,f4,f5,f6',
+        'fields2': 'f51,f52,f53,f54,f55,f56,f57,f58',
+    })}"
+    try:
+        with urlopen(request_url, timeout=8) as response:  # nosec B310 - public market data endpoint
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError("行情服务暂时不可用") from exc
+
+    raw_bars = payload.get("data", {}).get("klines", [])
+    bars: list[dict[str, float | str]] = []
+    for raw_bar in raw_bars:
+        fields = raw_bar.split(",")
+        try:
+            time, open_price, close_price, high_price, low_price = fields[:5]
+            values = {
+                "time": time,
+                "open": float(open_price),
+                "high": float(high_price),
+                "low": float(low_price),
+                "close": float(close_price),
+            }
+        except (AttributeError, TypeError, ValueError, IndexError):
+            continue
+        if all(float(values[key]) > 0 for key in ("open", "high", "low", "close")):
+            bars.append(values)
+
+    if not bars:
+        raise RuntimeError("未获取到该证券的小时 K 数据")
+    return bars
+
+
+def get_stock_kline(code: str, interval: str = "day") -> list[dict[str, float | str]]:
+    if interval == "day":
+        return get_daily_kline(code)
+    if interval == "hour":
+        return get_hourly_kline(code)
+    raise ValueError("不支持的 K 线周期")
 
 
 def _remote_search(query: str) -> list[dict[str, str]]:
